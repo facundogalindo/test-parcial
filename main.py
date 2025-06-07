@@ -11,17 +11,12 @@ Script para:
       * Ventana dimensionada al contenido
       * Barra de progreso
       * Teclas rápidas (V/F para VF, 1-4 para MC, Enter verificar)
-      * Feedback visual con imágenes de éxito/fracaso sin redimensionar ventana
-
-Instrucciones:
-1. Crear proyecto PyCharm y entorno virtual (venv).
-2. Añadir a requirements.txt:
-     python-docx
-     pillow
-3. Crear carpetas "Img" y "Practica" en el proyecto. Colocar imágenes en "Img" y .docx en "Practica".
-4. Copiar este archivo como main.py.
-5. Ejecutar en PyCharm.
+      * Feedback visual con imágenes precargadas de éxito/fracaso
+      * Botón “Salir” para terminar la aplicación en cualquier momento
+  - Ya no hay botones “No necesito”
 """
+
+import os
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -46,17 +41,20 @@ def load_questions(path):
                 text = paras[idx].text.strip()
                 if re.match(r"^(\d+)\.\s*", text):
                     break
-                hl = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW for run in paras[idx].runs)
-                mc = re.match(r"^([A-Z])\.\s*(.+)$", text)
+                hl = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW
+                         for run in paras[idx].runs)
+                mc = re.match(r"^([A-Z])[\.\)]\s*(.+)$", text)
                 if mc:
                     q['type'] = 'MC'
                     letter, txt = mc.group(1), mc.group(2)
                     q['options'].append((letter, txt))
-                    if hl: q['answers'].append(letter)
-                elif text.lower() in ('verdadero','falso'):
+                    if hl:
+                        q['answers'].append(letter)
+                elif text.lower() in ('verdadero', 'falso'):
                     q['type'] = 'VF'
                     q['options'].append((text,))
-                    if hl: q['answers'].append(text)
+                    if hl:
+                        q['answers'].append(text)
                 idx += 1
             qs.append(q)
         else:
@@ -67,7 +65,6 @@ def load_questions(path):
 def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     win = tk.Toplevel(root)
     win.title(f"Pregunta {idx}/{total}  Bien: {good}  Mal: {bad}")
-    win.geometry('')
     ttk.Style(win).theme_use('clam')
 
     frame = ttk.Frame(win, padding=20)
@@ -76,12 +73,13 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     # Barra de progreso
     pb = ttk.Progressbar(frame, length=400, mode='determinate', maximum=total)
     pb['value'] = idx - 1
-    pb.pack(pady=(0,10))
+    pb.pack(pady=(0, 10))
 
     ttk.Label(frame, text=q['question'], wraplength=600,
-              font=('Segoe UI',12,'bold')).pack(pady=(0,10))
+              font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
 
-    widgets, vars_mc = [], {}
+    widgets = []
+    vars_mc = {}
     var_vf = tk.StringVar(value="")
 
     if q['type'] == 'MC':
@@ -102,13 +100,17 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
         img_label = ttk.Label(frame)
         img_label.pack(pady=10)
 
+    # Botones Verificar / Siguiente / Salir
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(pady=10)
     btn_ver = ttk.Button(btn_frame, text="Verificar")
     btn_skip = ttk.Button(btn_frame, text="Siguiente")
+    btn_exit = ttk.Button(btn_frame, text="Salir", command=lambda: os._exit(0))
+
     btn_skip.state(['disabled'])
-    btn_ver.pack(side='left', padx=10)
-    btn_skip.pack(side='right', padx=10)
+    btn_ver.pack(side='left', padx=5)
+    btn_exit.pack(side='left', padx=5)
+    btn_skip.pack(side='right', padx=5)
 
     def disable_all():
         for w in widgets:
@@ -122,22 +124,27 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
             img_label.config(image=img)
             img_label.image = img
         else:
-            msg = "¡Correcto!" if correct else f"Incorrecto. Respuesta: {q['answers'][0]}"
+            if correct:
+                msg = "¡Correcto!"
+            else:
+                respuestas = ', '.join(q['answers'])
+                msg = f"Incorrecto. Respuestas correctas: {respuestas}"
             messagebox.showinfo("Resultado", msg, parent=win)
 
     result = False
+
     def verify():
         nonlocal result
         if q['type'] == 'MC':
             sel = [l for l, v in vars_mc.items() if v.get()]
             if not sel:
-                messagebox.showwarning("Atención","Seleccione al menos una opción.", parent=win)
+                messagebox.showwarning("Atención", "Seleccione al menos una opción.", parent=win)
                 return
             result = set(sel) == set(q['answers'])
         else:
             sel = var_vf.get()
             if not sel:
-                messagebox.showwarning("Atención","Seleccione Verdadero o Falso.", parent=win)
+                messagebox.showwarning("Atención", "Seleccione Verdadero o Falso.", parent=win)
                 return
             result = (sel == q['answers'][0])
         disable_all()
@@ -152,7 +159,8 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
             for i, (letter, _) in enumerate(q['options'], start=1):
                 if str(i) == c:
                     vars_mc[letter].set(not vars_mc[letter].get())
-        if e.keysym == 'Return': verify()
+        if e.keysym == 'Return':
+            verify()
 
     btn_ver.config(command=verify)
     btn_skip.config(command=win.destroy)
@@ -161,7 +169,6 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     win.update_idletasks()
     win.minsize(win.winfo_width(), win.winfo_height())
     win.resizable(False, False)
-
     win.grab_set()
     win.wait_window()
     return result
@@ -172,23 +179,14 @@ def main():
     root.title("Carga de Unidades")
     root.geometry('800x600')
 
-    use = messagebox.askyesno("Feedback Visual","¿Desea cargar imágenes de éxito/fracaso?", parent=root)
-    img_ok = img_ko = None
-    if use:
-        ok_path = filedialog.askopenfilename(
-            title="Imagen éxito",
-            initialdir="Img",
-            filetypes=[("Images","*.png;*.jpg;*.jpeg;*.gif")],
-            master=root)
-        ko_path = filedialog.askopenfilename(
-            title="Imagen fracaso",
-            initialdir="Img",
-            filetypes=[("Images","*.png;*.jpg;*.jpeg;*.gif")],
-            master=root)
-        img_ok = ImageTk.PhotoImage(Image.open(ok_path), master=root)
-        img_ko = ImageTk.PhotoImage(Image.open(ko_path), master=root)
+    # Carga automática de imágenes precargadas
+    try:
+        img_ok = ImageTk.PhotoImage(Image.open("Img/joya.jpg"), master=root)
+        img_ko = ImageTk.PhotoImage(Image.open("Img/joyita.jpg"), master=root)
+    except Exception:
+        img_ok = img_ko = None
 
-    selections = {1: None, 2: None, 3: None}
+    selections = {}
     for u in (1, 2, 3):
         frm = ttk.Frame(root, padding=10)
         frm.pack(fill='x')
@@ -196,28 +194,27 @@ def main():
         btn_load = ttk.Button(
             frm,
             text="Cargar archivo",
-            command=lambda u=u: selections.__setitem__(u,
+            command=lambda u=u: selections.setdefault(u,
                 filedialog.askopenfilename(
                     title=f"Cargar Unidad {u}",
                     initialdir="Practica",
-                    filetypes=[("Word","*.docx")],
+                    filetypes=[("Word", "*.docx")],
                     master=root))
         )
         btn_load.pack(side='left', padx=5)
-        btn_no = ttk.Button(
-            frm,
-            text="No necesito",
-            command=lambda u=u: selections.__setitem__(u, None)
-        )
-        btn_no.pack(side='left')
 
-    ttk.Button(root, text="Continuar", command=root.quit).pack(pady=20)
+    # Botones Continuar / Salir
+    main_btns = ttk.Frame(root)
+    main_btns.pack(pady=20)
+    ttk.Button(main_btns, text="Continuar", command=root.quit).pack(side='left', padx=5)
+    ttk.Button(main_btns, text="Salir", command=lambda: os._exit(0)).pack(side='left', padx=5)
+
     root.mainloop()
     root.withdraw()
 
     counts = {}
-    for u, p in selections.items():
-        if p:
+    for u, path in selections.items():
+        if path:
             cnt = simpledialog.askinteger(
                 "Cantidad",
                 f"¿Cuántas preguntas de Unidad {u}?",
@@ -240,11 +237,13 @@ def main():
             good += 1
         else:
             bad += 1
+
     messagebox.showinfo(
         "Resultados",
         f"Total: {total}\nBien: {good}\nMal: {bad}",
         parent=root
     )
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()
