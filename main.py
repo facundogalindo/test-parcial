@@ -1,162 +1,250 @@
 #!/usr/bin/env python3
 """
-read_highlighted_questions.py
+main.py
 
-Script para cargar preguntas de un archivo Word (.docx) donde la(s) respuesta(s) correcta(s) está(n) resaltada(s) en amarillo,
-y simular una evaluación GUI mejorada con progreso y desactivación de opciones tras verificar.
+Proyecto de Práctica de Exámenes – PyCharm
 
-Uso:
-  python read_highlighted_questions.py -i preguntas.docx
+Script para:
+  - Cargar preguntas resaltadas de archivos Word (.docx) de las Unidades 1,2,3
+  - Seleccionar cuántas preguntas usar de cada unidad
+  - Mostrar cuestionario con GUI Tkinter:
+      * Ventana dimensionada al contenido
+      * Barra de progreso
+      * Teclas rápidas (V/F para VF, 1-4 para MC, Enter verificar)
+      * Feedback visual con imágenes de éxito/fracaso sin redimensionar ventana
 
-Dependencias:
-  pip install python-docx
+Instrucciones:
+1. Crear proyecto PyCharm y entorno virtual (venv).
+2. Añadir a requirements.txt:
+     python-docx
+     pillow
+3. Crear carpetas "Img" y "Practica" en el proyecto. Colocar imágenes en "Img" y .docx en "Practica".
+4. Copiar este archivo como main.py.
+5. Ejecutar en PyCharm.
 """
 import re
-import argparse
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from tkinter import ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
+from PIL import Image, ImageTk
 from docx import Document
 from docx.enum.text import WD_COLOR_INDEX
-
-
-def select_file():
-    root = tk.Tk()
-    root.withdraw()
-    path = filedialog.askopenfilename(
-        title="Seleccionar archivo de preguntas",
-        filetypes=[("Archivos Word", "*.docx")]
-    )
-    root.destroy()
-    return path
+import random
 
 
 def load_questions(path):
     doc = Document(path)
-    questions = []
+    qs = []
     paras = doc.paragraphs
     idx = 0
     while idx < len(paras):
-        text = paras[idx].text.strip()
-        m_q = re.match(r"^(\d+)\.\s*(.+)$", text)
-        if m_q:
-            num = int(m_q.group(1))
-            q_text = m_q.group(2)
-            q = {'number': num, 'question': q_text, 'type': None, 'options': [], 'answers': []}
+        line = paras[idx].text.strip()
+        m = re.match(r"^(\d+)\.\s*(.+)$", line)
+        if m:
+            q = {'question': m.group(2), 'type': None, 'options': [], 'answers': []}
             idx += 1
             while idx < len(paras):
-                line = paras[idx].text.strip()
-                if re.match(r"^(\d+)\.\s*", line): break
-                highlighted = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW for run in paras[idx].runs)
-                m_opt = re.match(r"^([A-Z])\.\s*(.+)$", line)
-                if m_opt:
+                text = paras[idx].text.strip()
+                if re.match(r"^(\d+)\.\s*", text):
+                    break
+                hl = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW for run in paras[idx].runs)
+                mc = re.match(r"^([A-Z])\.\s*(.+)$", text)
+                if mc:
                     q['type'] = 'MC'
-                    letter, text_opt = m_opt.group(1), m_opt.group(2)
-                    q['options'].append({'letter': letter, 'text': text_opt})
-                    if highlighted: q['answers'].append(letter)
-                elif line.lower() in ('verdadero', 'falso'):
+                    letter, txt = mc.group(1), mc.group(2)
+                    q['options'].append((letter, txt))
+                    if hl: q['answers'].append(letter)
+                elif text.lower() in ('verdadero','falso'):
                     q['type'] = 'VF'
-                    q['options'].append({'text': line})
-                    if highlighted: q['answers'].append(line)
+                    q['options'].append((text,))
+                    if hl: q['answers'].append(text)
                 idx += 1
-            questions.append(q)
+            qs.append(q)
         else:
             idx += 1
-    return sorted(questions, key=lambda x: x['number'])
+    return qs
 
 
-def ask_question(q, correct_count, incorrect_count):
-    result = {'correct': False}
-    root = tk.Tk()
-    root.title(f"Pregunta {q['number']}  (Bien: {correct_count}  Mal: {incorrect_count})")
-    root.geometry('500x350')
-    style = ttk.Style(root)
-    try:
-        style.theme_use('clam')
-    except:
-        pass
+def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
+    win = tk.Toplevel(root)
+    win.title(f"Pregunta {idx}/{total}  Bien: {good}  Mal: {bad}")
+    win.geometry('')
+    ttk.Style(win).theme_use('clam')
 
-    frame = ttk.Frame(root, padding=20)
+    frame = ttk.Frame(win, padding=20)
     frame.pack(fill='both', expand=True)
 
-    # Pregunta
-    q_label = ttk.Label(frame, text=q['question'], wraplength=460, justify='left', font=('Segoe UI', 11, 'bold'))
-    q_label.pack(pady=(0,10))
+    # Barra de progreso
+    pb = ttk.Progressbar(frame, length=400, mode='determinate', maximum=total)
+    pb['value'] = idx - 1
+    pb.pack(pady=(0,10))
 
-    # Progreso
-    prog_label = ttk.Label(frame, text=f"Progreso - Bien: {correct_count} | Mal: {incorrect_count}", font=('Segoe UI', 10))
-    prog_label.pack(pady=(0,15))
+    ttk.Label(frame, text=q['question'], wraplength=600,
+              font=('Segoe UI',12,'bold')).pack(pady=(0,10))
 
-    option_widgets = []
+    widgets, vars_mc = [], {}
+    var_vf = tk.StringVar(value="")
+
     if q['type'] == 'MC':
-        vars = {}
-        for opt in q['options']:
-            v = tk.BooleanVar(value=False)
-            vars[opt['letter']] = v
-            cb = ttk.Checkbutton(frame, text=f"{opt['letter']}. {opt['text']}", variable=v)
+        for letter, txt in q['options']:
+            v = tk.BooleanVar()
+            vars_mc[letter] = v
+            cb = ttk.Checkbutton(frame, text=f"{letter}. {txt}", variable=v)
             cb.pack(anchor='w', pady=3)
-            option_widgets.append(cb)
+            widgets.append(cb)
     else:
-        var = tk.StringVar(value="")
-        for opt in q['options']:
-            rb = ttk.Radiobutton(frame, text=opt['text'], variable=var, value=opt['text'])
+        for (opt,) in q['options']:
+            rb = ttk.Radiobutton(frame, text=opt, variable=var_vf, value=opt)
             rb.pack(anchor='w', pady=3)
-            option_widgets.append(rb)
+            widgets.append(rb)
 
-    def disable_options():
-        for w in option_widgets:
+    img_label = None
+    if img_ok and img_ko:
+        img_label = ttk.Label(frame)
+        img_label.pack(pady=10)
+
+    btn_frame = ttk.Frame(frame)
+    btn_frame.pack(pady=10)
+    btn_ver = ttk.Button(btn_frame, text="Verificar")
+    btn_skip = ttk.Button(btn_frame, text="Siguiente")
+    btn_skip.state(['disabled'])
+    btn_ver.pack(side='left', padx=10)
+    btn_skip.pack(side='right', padx=10)
+
+    def disable_all():
+        for w in widgets:
             w.state(['disabled'])
-        verify_btn.state(['disabled'])
+        btn_ver.state(['disabled'])
+        btn_skip.state(['!disabled'])
 
-    def check_answer():
-        disable_options()
-        if q['type'] == 'MC':
-            selected = [lt for lt, v in vars.items() if v.get()]
-            if not selected:
-                messagebox.showwarning("Atención", "Seleccione al menos una opción.")
-                return
-            correct_set = set(q['answers'])
-            if set(selected) == correct_set:
-                messagebox.showinfo("Resultado", "¡Correcto!")
-                result['correct'] = True
-            else:
-                corr = ", ".join(sorted(correct_set))
-                messagebox.showinfo("Resultado", f"Incorrecto. Respuestas: {corr}.")
-                result['correct'] = False
+    def show_feedback(correct):
+        if img_label:
+            img = img_ok if correct else img_ko
+            img_label.config(image=img)
+            img_label.image = img
         else:
-            sel = var.get()
-            if not sel:
-                messagebox.showwarning("Atención", "Seleccione Verdadero o Falso.")
-                return
-            correct = q['answers'][0]
-            if sel == correct:
-                messagebox.showinfo("Resultado", "¡Correcto!")
-                result['correct'] = True
-            else:
-                messagebox.showinfo("Resultado", f"Incorrecto. La respuesta correcta: {correct}.")
-                result['correct'] = False
-        root.after(200, root.destroy)
+            msg = "¡Correcto!" if correct else f"Incorrecto. Respuesta: {q['answers'][0]}"
+            messagebox.showinfo("Resultado", msg, parent=win)
 
-    verify_btn = ttk.Button(frame, text="Verificar", command=check_answer)
-    verify_btn.pack(pady=15)
-    root.mainloop()
-    return result['correct']
+    result = False
+    def verify():
+        nonlocal result
+        if q['type'] == 'MC':
+            sel = [l for l, v in vars_mc.items() if v.get()]
+            if not sel:
+                messagebox.showwarning("Atención","Seleccione al menos una opción.", parent=win)
+                return
+            result = set(sel) == set(q['answers'])
+        else:
+            sel = var_vf.get()
+            if not sel:
+                messagebox.showwarning("Atención","Seleccione Verdadero o Falso.", parent=win)
+                return
+            result = (sel == q['answers'][0])
+        disable_all()
+        show_feedback(result)
+
+    def on_key(e):
+        c = e.char.lower()
+        if q['type'] == 'VF':
+            if c == 'v': var_vf.set('Verdadero')
+            if c == 'f': var_vf.set('Falso')
+        else:
+            for i, (letter, _) in enumerate(q['options'], start=1):
+                if str(i) == c:
+                    vars_mc[letter].set(not vars_mc[letter].get())
+        if e.keysym == 'Return': verify()
+
+    btn_ver.config(command=verify)
+    btn_skip.config(command=win.destroy)
+    win.bind('<Key>', on_key)
+
+    win.update_idletasks()
+    win.minsize(win.winfo_width(), win.winfo_height())
+    win.resizable(False, False)
+
+    win.grab_set()
+    win.wait_window()
+    return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Simular evaluación desde Word con GUI mejorada')
-    parser.add_argument('-i', '--input', help='Archivo .docx con preguntas resaltadas')
-    args = parser.parse_args()
+    root = tk.Tk()
+    root.title("Carga de Unidades")
+    root.geometry('800x600')
 
-    path = args.input or select_file()
-    if not path:
-        return
-    qs = load_questions(path)
+    use = messagebox.askyesno("Feedback Visual","¿Desea cargar imágenes de éxito/fracaso?", parent=root)
+    img_ok = img_ko = None
+    if use:
+        ok_path = filedialog.askopenfilename(
+            title="Imagen éxito",
+            initialdir="Img",
+            filetypes=[("Images","*.png;*.jpg;*.jpeg;*.gif")],
+            master=root)
+        ko_path = filedialog.askopenfilename(
+            title="Imagen fracaso",
+            initialdir="Img",
+            filetypes=[("Images","*.png;*.jpg;*.jpeg;*.gif")],
+            master=root)
+        img_ok = ImageTk.PhotoImage(Image.open(ok_path), master=root)
+        img_ko = ImageTk.PhotoImage(Image.open(ko_path), master=root)
+
+    selections = {1: None, 2: None, 3: None}
+    for u in (1, 2, 3):
+        frm = ttk.Frame(root, padding=10)
+        frm.pack(fill='x')
+        ttk.Label(frm, text=f"Unidad {u}:").pack(side='left')
+        btn_load = ttk.Button(
+            frm,
+            text="Cargar archivo",
+            command=lambda u=u: selections.__setitem__(u,
+                filedialog.askopenfilename(
+                    title=f"Cargar Unidad {u}",
+                    initialdir="Practica",
+                    filetypes=[("Word","*.docx")],
+                    master=root))
+        )
+        btn_load.pack(side='left', padx=5)
+        btn_no = ttk.Button(
+            frm,
+            text="No necesito",
+            command=lambda u=u: selections.__setitem__(u, None)
+        )
+        btn_no.pack(side='left')
+
+    ttk.Button(root, text="Continuar", command=root.quit).pack(pady=20)
+    root.mainloop()
+    root.withdraw()
+
+    counts = {}
+    for u, p in selections.items():
+        if p:
+            cnt = simpledialog.askinteger(
+                "Cantidad",
+                f"¿Cuántas preguntas de Unidad {u}?",
+                minvalue=1, maxvalue=100,
+                parent=root
+            )
+            counts[u] = cnt
+
+    all_qs = []
+    for u, c in counts.items():
+        qs = load_questions(selections[u])
+        random.shuffle(qs)
+        all_qs.extend(qs[:c])
+    random.shuffle(all_qs)
+
     good = bad = 0
-    for q in qs:
-        if ask_question(fq, good, bad): good += 1
-        else: bad += 1
-    messagebox.showinfo("Fin", f"Total: {len(qs)}\nCorrectas: {good}\nIncorrectas: {bad}")
+    total = len(all_qs)
+    for i, q in enumerate(all_qs, start=1):
+        if ask_question(root, q, i, total, good, bad, img_ok, img_ko):
+            good += 1
+        else:
+            bad += 1
+    messagebox.showinfo(
+        "Resultados",
+        f"Total: {total}\nBien: {good}\nMal: {bad}",
+        parent=root
+    )
 
-if __name__ == '__main__':
+if __name__=='__main__':
     main()
