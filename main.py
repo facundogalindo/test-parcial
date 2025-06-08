@@ -5,6 +5,7 @@ main.py
 Proyecto de Práctica de Exámenes – PyCharm
 
 Script para:
+  - Pantalla de bienvenida con botón sobre imagen
   - Cargar preguntas resaltadas de archivos Word (.docx) de las Unidades 1,2,3
   - Seleccionar cuántas preguntas usar de cada unidad
   - Mostrar cuestionario con GUI Tkinter:
@@ -13,9 +14,7 @@ Script para:
       * Teclas rápidas (V/F para VF, 1-4 para MC, Enter verificar)
       * Feedback visual con imágenes precargadas de éxito/fracaso
       * Botón “Salir” para terminar la aplicación en cualquier momento
-  - Ya no hay botones “No necesito”
 """
-
 import os
 import re
 import tkinter as tk
@@ -41,8 +40,7 @@ def load_questions(path):
                 text = paras[idx].text.strip()
                 if re.match(r"^(\d+)\.\s*", text):
                     break
-                hl = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW
-                         for run in paras[idx].runs)
+                hl = any(run.font.highlight_color == WD_COLOR_INDEX.YELLOW for run in paras[idx].runs)
                 mc = re.match(r"^([A-Z])[\.\)]\s*(.+)$", text)
                 if mc:
                     q['type'] = 'MC'
@@ -75,8 +73,7 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     pb['value'] = idx - 1
     pb.pack(pady=(0, 10))
 
-    ttk.Label(frame, text=q['question'], wraplength=600,
-              font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
+    ttk.Label(frame, text=q['question'], wraplength=600, font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
 
     widgets = []
     vars_mc = {}
@@ -100,13 +97,11 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
         img_label = ttk.Label(frame)
         img_label.pack(pady=10)
 
-    # Botones Verificar / Siguiente / Salir
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(pady=10)
     btn_ver = ttk.Button(btn_frame, text="Verificar")
     btn_skip = ttk.Button(btn_frame, text="Siguiente")
     btn_exit = ttk.Button(btn_frame, text="Salir", command=lambda: os._exit(0))
-
     btn_skip.state(['disabled'])
     btn_ver.pack(side='left', padx=5)
     btn_exit.pack(side='left', padx=5)
@@ -124,11 +119,7 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
             img_label.config(image=img)
             img_label.image = img
         else:
-            if correct:
-                msg = "¡Correcto!"
-            else:
-                respuestas = ', '.join(q['answers'])
-                msg = f"Incorrecto. Respuestas correctas: {respuestas}"
+            msg = "¡Correcto!" if correct else f"Incorrecto. Respuestas correctas: {', '.join(q['answers'])}"
             messagebox.showinfo("Resultado", msg, parent=win)
 
     result = False
@@ -175,11 +166,32 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
 
 
 def main():
+    # Ventana de bienvenida
+    welcome = tk.Tk()
+    welcome.title("Bienvenido")
+    # Crear canvas con imagen de fondo y botón encima
+    try:
+        pil_img = Image.open(os.path.join("Img", "simulacro para joyitas.png"))
+        sw, sh = welcome.winfo_screenwidth(), welcome.winfo_screenheight()
+        pil_img.thumbnail((int(sw*0.8), int(sh*0.8)), Image.Resampling.LANCZOS)
+        bg_img = ImageTk.PhotoImage(pil_img, master=welcome)
+        canvas = tk.Canvas(welcome, width=bg_img.width(), height=bg_img.height(), highlightthickness=0)
+        canvas.create_image(0, 0, anchor='nw', image=bg_img)
+        btn_start = tk.Button(canvas, text="Comenzar", command=welcome.destroy)
+        canvas.create_window(bg_img.width()//2, bg_img.height()-30, window=btn_start)
+        canvas.pack()
+    except Exception as e:
+        print(f"Error cargando imagen de bienvenida: {e}")
+        btn_start = tk.Button(welcome, text="Comenzar", command=welcome.destroy)
+        btn_start.pack(padx=20, pady=20)
+    welcome.resizable(False, False)
+    welcome.mainloop()
+
+    # Ventana de carga de unidades
     root = tk.Tk()
     root.title("Carga de Unidades")
     root.geometry('800x600')
 
-    # Carga automática de imágenes precargadas
     try:
         img_ok = ImageTk.PhotoImage(Image.open("Img/joya.jpg"), master=root)
         img_ko = ImageTk.PhotoImage(Image.open("Img/joyita.jpg"), master=root)
@@ -192,18 +204,13 @@ def main():
         frm.pack(fill='x')
         ttk.Label(frm, text=f"Unidad {u}:").pack(side='left')
         btn_load = ttk.Button(
-            frm,
-            text="Cargar archivo",
+            frm, text="Cargar archivo",
             command=lambda u=u: selections.setdefault(u,
                 filedialog.askopenfilename(
-                    title=f"Cargar Unidad {u}",
-                    initialdir="Practica",
-                    filetypes=[("Word", "*.docx")],
-                    master=root))
-        )
+                    title=f"Cargar Unidad {u}", initialdir="Practica",
+                    filetypes=[("Word", "*.docx")], master=root)))
         btn_load.pack(side='left', padx=5)
 
-    # Botones Continuar / Salir
     main_btns = ttk.Frame(root)
     main_btns.pack(pady=20)
     ttk.Button(main_btns, text="Continuar", command=root.quit).pack(side='left', padx=5)
@@ -215,12 +222,8 @@ def main():
     counts = {}
     for u, path in selections.items():
         if path:
-            cnt = simpledialog.askinteger(
-                "Cantidad",
-                f"¿Cuántas preguntas de Unidad {u}?",
-                minvalue=1, maxvalue=100,
-                parent=root
-            )
+            cnt = simpledialog.askinteger("Cantidad",
+                f"¿Cuántas preguntas de Unidad {u}?", minvalue=1, maxvalue=100, parent=root)
             counts[u] = cnt
 
     all_qs = []
@@ -238,11 +241,8 @@ def main():
         else:
             bad += 1
 
-    messagebox.showinfo(
-        "Resultados",
-        f"Total: {total}\nBien: {good}\nMal: {bad}",
-        parent=root
-    )
+    messagebox.showinfo("Resultados",
+                        f"Total: {total}\nBien: {good}\nMal: {bad}", parent=root)
 
 
 if __name__ == '__main__':
