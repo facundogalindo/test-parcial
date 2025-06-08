@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-main.py
-
 Proyecto de Práctica de Exámenes – PyCharm
 
 Script para:
@@ -14,6 +12,13 @@ Script para:
       * Teclas rápidas (V/F para VF, 1-4 para MC, Enter verificar)
       * Feedback visual con imágenes precargadas de éxito/fracaso
       * Botón “Salir” para terminar la aplicación en cualquier momento
+
+Para generar el .exe con ícono personalizado, usa:
+    pyinstaller --onefile --windowed \
+        --add-data "Img;Img" \
+        --add-data "Practica;Practica" \
+        --icon "Img/icono.ico" \
+        main.py
 """
 import os
 import re
@@ -73,7 +78,8 @@ def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     pb['value'] = idx - 1
     pb.pack(pady=(0, 10))
 
-    ttk.Label(frame, text=q['question'], wraplength=600, font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
+    ttk.Label(frame, text=q['question'], wraplength=600,
+              font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
 
     widgets = []
     vars_mc = {}
@@ -169,7 +175,7 @@ def main():
     # Ventana de bienvenida
     welcome = tk.Tk()
     welcome.title("Bienvenido")
-    # Crear canvas con imagen de fondo y botón encima
+
     try:
         pil_img = Image.open(os.path.join("Img", "simulacro para joyitas.png"))
         sw, sh = welcome.winfo_screenwidth(), welcome.winfo_screenheight()
@@ -184,11 +190,13 @@ def main():
         print(f"Error cargando imagen de bienvenida: {e}")
         btn_start = tk.Button(welcome, text="Comenzar", command=welcome.destroy)
         btn_start.pack(padx=20, pady=20)
+
     welcome.resizable(False, False)
     welcome.mainloop()
 
     # Ventana de carga de unidades
     root = tk.Tk()
+    root.protocol("WM_DELETE_WINDOW", root.quit)
     root.title("Carga de Unidades")
     root.geometry('800x600')
 
@@ -222,8 +230,8 @@ def main():
     counts = {}
     for u, path in selections.items():
         if path:
-            cnt = simpledialog.askinteger("Cantidad",
-                f"¿Cuántas preguntas de Unidad {u}?", minvalue=1, maxvalue=100, parent=root)
+            cnt = simpledialog.askinteger(
+                "Cantidad", f"¿Cuántas preguntas de Unidad {u}?", minvalue=1, maxvalue=100, parent=root)
             counts[u] = cnt
 
     all_qs = []
@@ -241,8 +249,11 @@ def main():
         else:
             bad += 1
 
-    messagebox.showinfo("Resultados",
-                        f"Total: {total}\nBien: {good}\nMal: {bad}", parent=root)
+    messagebox.showinfo(
+        "Resultados",
+        f"Total: {total}\nBien: {good}\nMal: {bad}",
+        parent=root
+    )
 
 
 if __name__ == '__main__':
