@@ -67,7 +67,15 @@ def load_questions(path):
 
 def ask_question(root, q, idx, total, good, bad, img_ok, img_ko):
     win = tk.Toplevel(root)
-    win.title(f"Pregunta {idx}/{total}  Bien: {good}  Mal: {bad}")
+    total_respondidas = 1
+    porcentaje = 0
+    if (good + bad != 0 ):
+        total_respondidas = good + bad
+    else:
+        porcentaje = 0
+    porcentaje = round(100 * good / total_respondidas, 2)
+
+    win.title(f"Pregunta {idx}/{total}  Bien: {good}  Mal: {bad}  Exito: {porcentaje} %")
     ttk.Style(win).theme_use('clam')
 
     frame = ttk.Frame(win, padding=20)
